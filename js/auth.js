@@ -9,7 +9,7 @@
  * Se preferir Firebase, só as funções deste arquivo e de sync.js mudam. O resto fica igual.
  */
 
-import { createClient } from "https://meqbbwwcwcdbbsocrzeq.supabase.co";
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 import { setMeta, getMeta, limpar } from "./store.js";
 
 /* Cole os dois valores abaixo (Dashboard → Settings → API Keys).
@@ -17,7 +17,7 @@ import { setMeta, getMeta, limpar } from "./store.js";
    os dados é a RLS do banco. A chave SECRETA (sb_secret_...) NUNCA entra no app.
    Projetos criados a partir de novembro de 2025 só têm as chaves novas; projetos
    antigos ainda aceitam a chave anon, que funciona igual aqui. */
-export const SUPABASE_URL = "https://SEU-PROJETO.supabase.co";
+export const SUPABASE_URL = "https://meqbbwwcwcdbbsocrzeq.supabase.co";
 export const SUPABASE_KEY = "sb_publishable_SHxaIz9yb_5G51A8M97Y-Q_0-xR7Cza";
 
 /** Nome antigo mantido para compatibilidade com código que ainda o use. */
