@@ -50,7 +50,12 @@ export async function cadastrar(email, senha, sotaquePreferido) {
   const { data, error } = await sb.auth.signUp({
     email,
     password: senha,
-    options: { data: { sotaque_preferido: sotaquePreferido } },
+    options: {
+      data: { sotaque_preferido: sotaquePreferido },
+      // Diz explicitamente para onde voltar após confirmar o e-mail — não
+      // depende só do Site URL do painel, que pode ficar defasado em cache.
+      emailRedirectTo: location.href.split("#")[0].split("?")[0],
+    },
   });
   if (error) throw traduzErro(error);
   // Se a confirmação por e-mail estiver ligada, data.session vem nula: avise na tela.
