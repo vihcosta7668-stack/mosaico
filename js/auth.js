@@ -17,8 +17,8 @@ import { setMeta, getMeta, limpar } from "./store.js";
    os dados é a RLS do banco. A chave SECRETA (sb_secret_...) NUNCA entra no app.
    Projetos criados a partir de novembro de 2025 só têm as chaves novas; projetos
    antigos ainda aceitam a chave anon, que funciona igual aqui. */
-export const SUPABASE_URL = "https://SEU-PROJETO.supabase.co";
-export const SUPABASE_KEY = "SUA-CHAVE-PUBLICAVEL";
+export const SUPABASE_URL = "https://meqbbwwcwcdbbsocrzeq.supabase.co";
+export const SUPABASE_KEY = "sb_publishable_SHxaIz9yb_5G51A8M97Y-Q_0-xR7Cza";
 
 /** Nome antigo mantido para compatibilidade com código que ainda o use. */
 export const SUPABASE_ANON_KEY = SUPABASE_KEY;
