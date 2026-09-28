@@ -1,6 +1,6 @@
 // Mosaico — cache do app e reenvio em segundo plano.
 // Troque a VERSAO sempre que subir arquivos novos.
-const VERSAO = "mosaico-v5";
+const VERSAO = "mosaico-v6";
 const ARQUIVOS = [
   "./", "index.html", "manifest.webmanifest",
   "conteudo/situacoes.js",
