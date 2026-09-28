@@ -1403,20 +1403,27 @@ function fSitu(a,b,head){
 
 /* ---------------- peças reaproveitadas pelas duas fontes ---------------- */
 /* ---------------- verificação de pronúncia ---------------- */
-function normalizarTxt(t){ return String(t).toLowerCase().replace(/[^\p{L}\s']/gu,"").replace(/\s+/g," ").trim(); }
-function similaridade(a,b){
-  const pa=normalizarTxt(a).split(" ").filter(Boolean), pb=normalizarTxt(b).split(" ").filter(Boolean);
-  if(!pa.length||!pb.length) return 0;
-  const setB=new Set(pb); const acertos=pa.filter(w=>setB.has(w)).length;
-  return acertos/Math.max(pa.length,pb.length);
-}
-function reconhecedorDisponivel(){ return !!(window.SpeechRecognition||window.webkitSpeechRecognition); }
-function novoReconhecedor(lang){
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR) return null;
-  const r=new SR(); r.lang=lang||"en-US"; r.interimResults=false; r.maxAlternatives=3; r.continuous=false; return r;
-}
 /** Confirma que existe fala de verdade no áudio — não silêncio, não ruído de meio segundo.
  * Roda inteiramente no aparelho, sem internet, então funciona em qualquer navegador. */
+async function temFalaAudivel(blob){
+  try{
+    const buf=await blob.arrayBuffer();
+    const Ctx=window.AudioContext||window.webkitAudioContext; const ctx=new Ctx();
+    const audio=await ctx.decodeAudioData(buf);
+    const dados=audio.getChannelData(0);
+    let soma=0; for(let i=0;i<dados.length;i++) soma+=dados[i]*dados[i];
+    const rms=Math.sqrt(soma/dados.length);
+    ctx.close && ctx.close();
+    return {ok: rms>0.008 && audio.duration>0.35, duracao:audio.duration};
+  }catch(e){ return {ok:true, duracao:0}; } // se o aparelho não deixar analisar, não bloqueia por isso
+}
+
+/* ---------------- verificação de pronúncia ---------------- */
+/** Confirma que existe fala de verdade no áudio — não silêncio, não ruído de meio segundo.
+ * Roda inteiramente no aparelho, sem internet, então funciona em qualquer navegador e
+ * é o único portão automático em que dá para confiar: reconhecimento de fala por API
+ * do navegador foi tentado e descartado — disputava o microfone com a própria gravação
+ * e o tempo de resposta pela rede era imprevisível, gerando reprovações falsas. */
 async function temFalaAudivel(blob){
   try{
     const buf=await blob.arrayBuffer();
@@ -1433,15 +1440,13 @@ async function temFalaAudivel(blob){
 let recState={rec:null,url:null};
 /**
  * Prática de pronúncia com aprovação obrigatória. Cada frase do pool precisa ser
- * gravada e aprovada — pelo reconhecimento de fala do navegador quando existir,
- * ou por uma confirmação da própria pessoa quando não existir, mas isso só depois
- * de o app confirmar que ela realmente falou (áudio com volume e duração reais).
- * A etapa só libera "Concluir etapa" quando o pool inteiro estiver aprovado.
+ * gravada — de verdade, com fala detectável — e comparada com o nativo antes de
+ * a pessoa confirmar que ficou parecido. A etapa só libera "Concluir etapa" quando
+ * o pool inteiro estiver aprovado.
  */
 function shadowing(a,b,head,frasesPool,legenda){
   cur.aprovadas = cur.aprovadas || new Set();
   let fi = 0;
-  const podeReconhecer = reconhecedorDisponivel();
 
   const draw=()=>{
     const f=frasesPool[fi];
@@ -1459,34 +1464,24 @@ function shadowing(a,b,head,frasesPool,legenda){
       <div class="imit-rodape">
         <span>${feitas} de ${total} frases aprovadas</span>
         <button class="cta" id="concluirImit" ${feitas<total?"disabled":""}>Concluir etapa</button>
-      </div>
-      ${!podeReconhecer?`<div class="note">Este navegador não confere a pronúncia sozinho. Você grava, ouve a diferença e confirma — mas só depois de realmente falar: gravação vazia ou muito curta não é aceita.</div>`:""}`;
+      </div>`;
 
     b.querySelectorAll(".imit-dot").forEach(d=>d.onclick=()=>{ fi=+d.dataset.k; draw(); });
     const vel=()=>+document.getElementById("sp").value/100;
     document.getElementById("nat").onclick=()=>speak(f.en,a.voz,vel());
     document.getElementById("concluirImit").onclick=()=>{
-      if(cur.aprovadas.size>=frasesPool.length) proximo("Você testou e acertou a pronúncia de todas as frases desta situação.");
+      if(cur.aprovadas.size>=frasesPool.length) proximo("Você testou e comparou a pronúncia de todas as frases desta situação.");
     };
     const w=document.getElementById("w");
     w.querySelectorAll("i").forEach((el,k)=>{ el.style.height=(8+Math.abs(Math.sin(k*.7))*22)+"px"; el.style.animationDelay=(k*.04)+"s"; });
 
     document.getElementById("rec").onclick=async e=>{
       const btn=e.currentTarget;
-      if(recState.rec && recState.rec.state==="recording"){ recState.rec.stop(); recState.reconhecedor && recState.reconhecedor.stop(); return; }
-      let transcricao=null, reconheceuAlgo=false;
+      if(recState.rec && recState.rec.state==="recording"){ recState.rec.stop(); return; }
       try{
         const stream=await navigator.mediaDevices.getUserMedia({audio:true});
         const chunks=[]; const r=new MediaRecorder(stream); recState.rec=r;
         r.ondataavailable=ev=>chunks.push(ev.data);
-
-        // reconhecimento roda em paralelo à gravação, quando existe
-        if(podeReconhecer){
-          const rec=novoReconhecedor(a.voz); recState.reconhecedor=rec;
-          rec.onresult=ev=>{ transcricao=ev.results[0][0].transcript; reconheceuAlgo=true; };
-          rec.onerror=()=>{};
-          try{ rec.start(); }catch(e){}
-        }
 
         r.onstop=async ()=>{
           stream.getTracks().forEach(x=>x.stop()); w.classList.remove("rec"); btn.textContent="Gravar de novo";
@@ -1494,40 +1489,23 @@ function shadowing(a,b,head,frasesPool,legenda){
           const blob=new Blob(chunks,{type:r.mimeType||"audio/webm"});
           recState.url=URL.createObjectURL(blob);
           const pos=document.getElementById("pos");
-          pos.innerHTML=`<div class="vs">
-              <button id="mine"><b>Minha voz</b>tocar</button><button id="seq"><b>Nativo → eu</b>em sequência</button></div>`;
-          document.getElementById("mine").onclick=()=>new Audio(recState.url).play();
-          document.getElementById("seq").onclick=()=>speak(f.en,a.voz,vel(),()=>new Audio(recState.url).play());
 
           const chk = await temFalaAudivel(blob);
           if(!chk.ok){
-            pos.insertAdjacentHTML("beforeend", `<div class="fb no"><span style="flex:1">Não captei sua voz — tenta de novo, falando um pouco mais perto do microfone.</span></div>`);
+            pos.innerHTML=`<div class="fb no"><span style="flex:1">Não captei sua voz — tenta de novo, falando um pouco mais perto do microfone.</span></div>`;
             return;
           }
-          await new Promise(res=>setTimeout(res, 350)); // dá tempo do onresult chegar, se for chegar
-
-          if(podeReconhecer && reconheceuAlgo && transcricao){
-            const sim = similaridade(transcricao, f.en);
-            if(sim>=0.6){
-              cur.aprovadas.add(fi); S.xp.imitacao=Math.min(100,S.xp.imitacao+8); vibrar([12,40,12]);
-              pos.insertAdjacentHTML("beforeend", `<div class="fb ok"><span style="flex:1">Ouvi: “${transcricao}”. Bateu com a frase — aprovado.</span></div>`);
-              toast("Pronúncia aprovada");
-              setTimeout(draw, 900);
-            } else {
-              pos.insertAdjacentHTML("beforeend", `<div class="fb no"><span style="flex:1">Ouvi: “${transcricao}”. Ainda não bateu com “${f.en}”. Tenta de novo.</span></div>`);
-              vibrar([25,40,25]);
-            }
-          } else if(podeReconhecer){
-            pos.insertAdjacentHTML("beforeend", `<div class="fb no"><span style="flex:1">Não consegui identificar palavras nessa gravação. Fale a frase inteira, olhando para o texto, e tenta de novo.</span></div>`);
-          } else {
-            pos.insertAdjacentHTML("beforeend", `<p style="font-size:14px;margin:14px 0 8px">Você falou de verdade (${chk.duracao.toFixed(1)}s de áudio). Ficou parecido com o nativo?</p>
-              <div class="grade"><button id="okSelf">Sim, ficou bom<small>aprovar</small></button><button id="noSelf">Vou tentar de novo<small>regravar</small></button></div>`);
-            document.getElementById("okSelf").onclick=()=>{
-              cur.aprovadas.add(fi); S.xp.imitacao=Math.min(100,S.xp.imitacao+5); vibrar([12,40,12]);
-              toast("Pronúncia aprovada"); setTimeout(draw, 500);
-            };
-            document.getElementById("noSelf").onclick=()=>draw();
-          }
+          pos.innerHTML=`<div class="vs">
+              <button id="mine"><b>Minha voz</b>tocar</button><button id="seq"><b>Nativo → eu</b>em sequência</button></div>
+            <p style="font-size:14px;margin:16px 0 8px">Você falou de verdade (${chk.duracao.toFixed(1)}s). Compare com o nativo — ficou parecido?</p>
+            <div class="grade"><button id="okSelf">Sim, ficou bom<small>aprovar</small></button><button id="noSelf">Vou tentar de novo<small>regravar</small></button></div>`;
+          document.getElementById("mine").onclick=()=>new Audio(recState.url).play();
+          document.getElementById("seq").onclick=()=>speak(f.en,a.voz,vel(),()=>new Audio(recState.url).play());
+          document.getElementById("okSelf").onclick=()=>{
+            cur.aprovadas.add(fi); S.xp.imitacao=Math.min(100,S.xp.imitacao+6); vibrar([12,40,12]);
+            toast("Pronúncia aprovada"); setTimeout(draw, 500);
+          };
+          document.getElementById("noSelf").onclick=()=>draw();
         };
         r.start(); w.classList.add("rec"); btn.textContent="Parar gravação";
         speak(f.en,a.voz,vel());
